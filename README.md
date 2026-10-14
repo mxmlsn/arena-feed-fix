@@ -15,9 +15,9 @@ A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.
   - ↓ scrolls 10 rows, ↓↓ scrolls 20 rows. Click again while running to queue more runs (dots = queued). Right-click a running arrow to stop and clear the queue.
   - Pin: jumps back to the furthest point you reached (remembered across reloads, searched by block id, up to 60 loads). Click again to cancel. Hover shows a preview, the date and the distance.
   - The ring inside a button shows progress.
-  - Right-click menu: Pin current position, Auto-save on/off, Reset memory.
+  - Right-click menu: Pin current position, Auto-save on/off, Hide your name (on by default; controls the Connect popup tweak below), Reset memory.
 - The saved point only moves down: scrolling up or jumping never moves it up. Only Reset memory or a manual pin can set an earlier point. A manual pin is used once, then auto-save continues from there.
-- Connect popup (all pages): hides your own name and avatar dot next to your channels. Set your name in `myNames` at the top of `connect.js`.
+- Connect popup (all pages): hides your own name and avatar dot next to your channels. Set your name in `myNames` at the top of `connect.js`. Turn it off with Hide your name in the pill menu (stored in localStorage `afc-hide-name`).
 
 ### Install
 1. Download or clone this repo.
@@ -42,9 +42,9 @@ A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.
   - ↓ на 10 рядов, ↓↓ на 20. Повторные клики во время прокрутки ставят ещё циклы в очередь (точки в кнопке). Правый клик по работающей стрелке останавливает и чистит очередь.
   - Булавка: возвращает к самому дальнему месту, до которого долистал (помнится после перезагрузки, ищется по id блока, до 60 подгрузок). Ещё клик = отмена. При наведении превью, дата и расстояние.
   - Кольцо в кнопке показывает прогресс.
-  - Правый клик: Pin current position, Auto-save on/off, Reset memory.
+  - Правый клик: Pin current position, Auto-save on/off, Hide your name (по умолчанию вкл; управляет скрытием имени в окне Connect, см. ниже), Reset memory.
 - Запомненное место двигается только вниз: прокрутка вверх и переходы его не поднимают. Поднять можно только через Reset memory или ручную метку. Ручная метка одноразовая, после перехода к ней снова работает автозапоминание.
-- Окно Connect (на всех страницах): прячет твоё имя и кружок у твоих каналов. Имя в `myNames` в начале `connect.js`.
+- Окно Connect (на всех страницах): прячет твоё имя и кружок у твоих каналов. Имя в `myNames` в начале `connect.js`. Выключается пунктом Hide your name в меню кнопок (localStorage `afc-hide-name`).
 
 ### Установка
 1. Скачай или склонируй репо.

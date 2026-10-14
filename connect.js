@@ -16,7 +16,10 @@
     return input.closest('[role="dialog"],[aria-modal="true"]') || el;
   }
   function hideEl(el) { if (el && !el.hasAttribute('data-afc-own')) { el.setAttribute('data-afc-own', '1'); el.style.setProperty('display', 'none', 'important'); } }
+  const enabled = () => { try { return JSON.parse(localStorage.getItem('afc-hide-name') || 'true') !== false; } catch (e) { return true; } };
+  function showAll() { document.querySelectorAll('[data-afc-own]').forEach(el => { el.style.removeProperty('display'); el.removeAttribute('data-afc-own'); }); }
   function run() {
+    if (!enabled()) { showAll(); return; }
     const my = names();
     document.querySelectorAll(CFG.searchInput).forEach(inp => {
       const m = modalOf(inp);
@@ -35,6 +38,8 @@
       });
     });
   }
+  addEventListener('storage', e => { if (e.key === 'afc-hide-name') run(); });
+  setInterval(() => { if (!enabled() && document.querySelector('[data-afc-own]')) showAll(); }, 1000); // та же вкладка: storage-событие не приходит
   let raf = 0;
   new MutationObserver(() => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; run(); }); })
     .observe(document.documentElement, { childList: true, subtree: true, characterData: true });

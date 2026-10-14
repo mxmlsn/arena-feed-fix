@@ -319,6 +319,7 @@
     const items = [
       ['Pin current position', () => savePos(true)],
       ['Auto-save: ' + (autoOn() ? 'on' : 'off'), () => { ls.set(AUTO_KEY, !autoOn()); flash('Auto-save ' + (autoOn() ? 'on' : 'off')); }],
+      [(ls.get('afc-hide-name') !== false ? '☑' : '☐') + ' Hide your name', () => { const on = ls.get('afc-hide-name') === false; ls.set('afc-hide-name', on); flash('Hide your name: ' + (on ? 'on' : 'off')); }],
       ['Reset memory', () => { clearQueues(); ls.del(posKey()); flash('Memory reset'); }],
     ];
 
