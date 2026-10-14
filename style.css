@@ -1,0 +1,33 @@
+/* Только на / и /feed (класс afc-home). Сетка как на Explore, колонок --afc-cols (считает inject.js). */
+html.afc-home .afc-grid {
+  display: grid !important;
+  grid-template-columns: repeat(var(--afc-cols, 4), minmax(0, 1fr)) !important;
+  column-gap: 15px !important; row-gap: 45px !important;
+}
+/* группы идут встык, с тем же зазором, что между рядами */
+html.afc-home .afc-group { padding-top: 0 !important; padding-bottom: 45px !important; margin-top: 0 !important; margin-bottom: 0 !important; border: 0 !important; }
+html.afc-home hr { display: none !important; }
+/* левый нижний угол: навигация по ленте */
+#afc-nav { position: fixed; left: 16px; bottom: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 6px;
+  padding: 6px; border-radius: 999px; background: var(--colors-gray2, #e6e6e6); }
+#afc-nav button { width: 34px; height: 34px; border-radius: 50%; border: 0; background: #fff; color: var(--colors-gray7, #333);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; }
+#afc-nav button:hover { background: var(--colors-gray1, #f7f7f7); }
+#afc-nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+#afc-nav .afc-busy svg { animation: afc-spin 1s linear infinite; opacity: .6; }
+@keyframes afc-spin { to { transform: rotate(360deg); } }
+#afc-nav .afc-tip { display: none; position: absolute; left: 58px; bottom: 6px; white-space: nowrap; background: #fff;
+  border: 1px solid var(--colors-gray3, #ccc); border-radius: 4px; padding: 6px 10px; font: 13px var(--fonts-sans, Arial, sans-serif); color: var(--colors-gray7, #333); }
+.afc-menu { position: fixed; z-index: 1001; min-width: 220px; background: #fff; border: 1px solid var(--colors-gray3, #ccc);
+  border-radius: 4px; box-shadow: 0 2px 10px rgba(0,0,0,.08); padding: 4px 0; font: 14px var(--fonts-sans, Arial, sans-serif); }
+.afc-menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 8px 14px; font: inherit; color: var(--colors-gray7, #333); cursor: pointer; }
+.afc-menu button:hover { background: var(--colors-gray1, #f7f7f7); }
+/* прогресс в самой кнопке: кольцо */
+#afc-nav button.afc-prog { background: radial-gradient(#fff 58%, transparent 60%), conic-gradient(var(--colors-gray7, #333) calc(var(--p, 0) * 1turn), #fff 0); }
+#afc-nav .afc-tip img { display: block; max-width: 160px; max-height: 160px; margin-bottom: 6px; }
+#afc-nav .afc-tip { white-space: normal; max-width: 200px; }
+#afc-nav .afc-tt { font-weight: bold; margin-bottom: 4px; }
+#afc-nav .afc-td { color: var(--colors-slate, #999); font-size: 12px; margin-top: 2px; }
+#afc-nav button { position: relative; }
+#afc-nav .afc-dots { position: absolute; left: 0; right: 0; bottom: 2px; font-size: 7px; line-height: 7px; letter-spacing: 1px; text-align: center; color: var(--colors-gray7, #333); pointer-events: none; }
+.afc-menu .afc-help { border-top: 1px solid var(--colors-gray2, #e6e6e6); margin-top: 4px; padding: 8px 14px 6px; font-size: 12px; line-height: 1.4; color: var(--colors-slate, #999); max-width: 260px; }
