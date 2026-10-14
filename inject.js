@@ -237,7 +237,10 @@
     if (cur && cur.pinned) return;
     let best = null, bs = -1;
     for (const a of vis) { const s = seqOf(blockIdOf(a)); if (s > bs) { bs = s; best = a; } }
-    if (best && (!cur || bs > (cur.seq || 0))) { const id = blockIdOf(best); ls.set(posKey(), Object.assign({ id, seq: bs, t: Date.now() }, meta.get(id) || {})); }
+    // Сравниваем только порядком ТЕКУЩЕЙ загрузки ленты: номера после перезагрузки начинаются заново.
+    // Если сохранённый блок в этой сессии ещё не встречался, его позиция неизвестна -> не перезаписываем.
+    const savedNow = cur && cur.id ? seqOf(cur.id) : 0;
+    if (best && (!cur || !cur.id || (savedNow && bs > savedNow))) { const id = blockIdOf(best); ls.set(posKey(), Object.assign({ id, seq: bs, t: Date.now() }, meta.get(id) || {})); }
   }
   addEventListener('scroll', () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => savePos(false), 700); }, { passive: true });
 
@@ -286,7 +289,7 @@
         if (el) {
           el.scrollIntoView({ block: 'start' }); window.scrollBy(0, -navBottom() - 20);
           // ручная метка одноразовая: после успешного перехода снова работает автозапоминание с этой точки
-          if (saved.pinned) { const sv = Object.assign({}, saved); delete sv.pinned; sv.seq = seqOf(saved.id) || sv.seq; ls.set(posKey(), sv); }
+          if (saved.pinned) { const sv = Object.assign({}, saved); delete sv.pinned; ls.set(posKey(), sv); }
           return;
         }
         const before = cards().length, h0 = document.documentElement.scrollHeight, t0 = Date.now();
@@ -341,7 +344,7 @@
       if (!sv || !sv.id) { ui.tip.textContent = 'No saved position'; }
       else {
         const vis = visibleCards(); const cur = vis.length ? Math.max(...vis.map(a => seqOf(blockIdOf(a)))) : 0;
-        const rows = sv.seq && cur ? Math.round((sv.seq - cur) / columns()) : null;
+        const tseq = seqOf(sv.id) || sv.seq; const rows = tseq && cur ? Math.round((tseq - cur) / columns()) : null;
         const dist = rows == null ? 'Go to saved position' : rows > 0 ? 'About ' + rows + ' rows down' : rows < 0 ? 'About ' + (-rows) + ' rows up' : 'You are here';
         ui.tip.innerHTML = (sv.img ? '<img src="' + esc(sv.img) + '">' : sv.title ? '<div class="afc-tt">' + esc(sv.title) + '</div>' : '')
           + '<div>' + esc(dist) + '</div>' + (sv.date ? '<div class="afc-td">' + esc(sv.date) + '</div>' : '') + (restoring ? '<div class="afc-td">Click to cancel</div>' : '');

@@ -1,44 +1,63 @@
+<a id="top"></a>
 # arena-feed-fix
 
-A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.na/feed`):
+[English](#english) · [Русский](#русский)
 
-- hides your own saves, keeps only people you follow
-- removes repeated blocks (one block connected to several channels shows once)
-- no author/time headers: one continuous Explore-style grid with full rows
-- bottom-left pill: scroll 10 / 20 rows (click again to queue), jump back to the furthest point you reached (remembered across reloads); right-click for options
-- in the Connect popup (all pages), hides your own name next to your channels (set your name in `myNames` in `connect.js`)
+## English
 
-Install: download/clone this repo, open `chrome://extensions`, enable Developer mode, click "Load unpacked", pick the folder, reload Are.na.
+A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.na/feed`). Unofficial, not affiliated with Are.na; it only changes data inside your own browser.
 
-Unofficial, not affiliated with Are.na. It only rewrites data in your own browser.
+### What it does
+- Hides your own saves, so only people you follow remain.
+- Removes repeated blocks: a block connected to several channels shows once (the topmost).
+- No author/time headers: one continuous Explore-style grid, every row full. Column count follows the window width like Explore (force it with `columns` in `inject.js`).
+- Bottom-left pill:
+  - ↓ scrolls 10 rows, ↓↓ scrolls 20 rows. Click again while running to queue more runs (dots = queued). Right-click a running arrow to stop and clear the queue.
+  - Pin: jumps back to the furthest point you reached (remembered across reloads, searched by block id, up to 60 loads). Click again to cancel. Hover shows a preview, the date and the distance.
+  - The ring inside a button shows progress.
+  - Right-click menu: Pin current position, Auto-save on/off, Reset memory.
+- The saved point only moves down: scrolling up or jumping never moves it up. Only Reset memory or a manual pin can set an earlier point. A manual pin is used once, then auto-save continues from there.
+- Connect popup (all pages): hides your own name and avatar dot next to your channels. Set your name in `myNames` at the top of `connect.js`.
 
----
+### Install
+1. Download or clone this repo.
+2. Open `chrome://extensions` and enable Developer mode.
+3. Click "Load unpacked" and pick the folder.
+4. Reload Are.na. After updating the files, press the reload arrow on the extension card.
 
-Заметки (RU)
+### How it works
+`inject.js` intercepts the site's own GraphQL `FeedMeQuery` response and rewrites the data (drops your groups and duplicates, packs blocks into one group per page, a multiple of the column count). The site renders the cards itself. Settings are in `CFG` at the top of `inject.js`; logs in DevTools start with `[arena-feed-clean]`.
 
-На https://www.are.na/ и /feed: только блоки от тех, на кого ты подписан, без твоих, без повторов (остаётся самый верхний), без шапок с авторами, сплошной сеткой как на Explore. Другие страницы не трогает. Масштаб обычный.
+[Back to top](#top)
 
-## Установка / обновление
-`chrome://extensions`, Developer mode, Load unpacked (или круглая стрелка у расширения), потом обнови вкладку.
-Старые файлы лежат в `old/` (не в репо).
+## Русский
 
-## Как устроено
-Сетку и карточки рисует сам сайт. `inject.js` перехватывает ответ запроса `FeedMeQuery` и меняет данные:
-1. выкидывает твои группы;
-2. выкидывает блоки, которые уже были выше;
-3. все оставшиеся блоки страницы кладёт в первую чужую группу страницы (её поля не трогаются, меняется только список блоков), остальные группы убирает. Сайт рисует одну сетку.
-Если страница после чистки пустая, сразу подтягивается следующая (до `maxSkipPages`), чтобы сайт не решил, что лента кончилась.
-Число блоков в каждой группе кратно числу колонок (остаток переносится на следующую подгрузку), поэтому все ряды полные. Колонки считаются как на Explore (минимум 260px, зазор 15px) от ширины окна; чтобы зафиксировать, поставь `columns: 4` в `CFG`.
-Шапку этой группы (ссылка на автора над сеткой) скрипт прячет вместе со временем, отступом и разделителем.
+Расширение для Chrome, которое чистит ленту подписок Are.na (`are.na/` и `are.na/feed`). Неофициальное, меняет данные только в твоём браузере.
 
-## Если сломается
-`CFG` в начале `inject.js`. Логи в консоли с префиксом `[arena-feed-clean]`.
+### Что делает
+- Убирает твои сохранения, остаются только те, на кого подписан.
+- Убирает повторы: блок, добавленный в несколько каналов, показывается один раз (самый верхний).
+- Без шапок с автором и временем: одна сплошная сетка как на Explore, все ряды полные. Колонки считаются как на Explore по ширине окна (зафиксировать: `columns` в `inject.js`).
+- Кнопки слева внизу:
+  - ↓ на 10 рядов, ↓↓ на 20. Повторные клики во время прокрутки ставят ещё циклы в очередь (точки в кнопке). Правый клик по работающей стрелке останавливает и чистит очередь.
+  - Булавка: возвращает к самому дальнему месту, до которого долистал (помнится после перезагрузки, ищется по id блока, до 60 подгрузок). Ещё клик = отмена. При наведении превью, дата и расстояние.
+  - Кольцо в кнопке показывает прогресс.
+  - Правый клик: Pin current position, Auto-save on/off, Reset memory.
+- Запомненное место двигается только вниз: прокрутка вверх и переходы его не поднимают. Поднять можно только через Reset memory или ручную метку. Ручная метка одноразовая, после перехода к ней снова работает автозапоминание.
+- Окно Connect (на всех страницах): прячет твоё имя и кружок у твоих каналов. Имя в `myNames` в начале `connect.js`.
+
+### Установка
+1. Скачай или склонируй репо.
+2. `chrome://extensions`, включи Developer mode.
+3. Load unpacked и выбери папку.
+4. Обнови Are.na. После обновления файлов жми круглую стрелку у расширения.
+
+### Как устроено
+`inject.js` перехватывает ответ запроса сайта `FeedMeQuery` и переписывает данные (убирает твои группы и повторы, складывает блоки страницы в одну группу, кратно числу колонок). Карточки рисует сам сайт. Настройки в `CFG` в начале `inject.js`, логи в консоли с префиксом `[arena-feed-clean]`.
+
+### Если сломается
 - Ничего не меняется: в DevTools → Network найди запрос ленты к `graphql`, его `operationName` впиши в `CFG.operation`.
-- Видны шапки: смотри предупреждение «не нашёл шапку» в консоли, логика в `fixHeaders()`.
+- Видны шапки: логика в `fixHeaders()`.
+- Имя в Connect не прячется: впиши его в `myNames` в `connect.js`.
 
-## Кнопки слева внизу (только / и /feed)
-↓ на 10 рядов, ↓↓ на 20 рядов, булавка: к запомненному месту (самый дальний блок, до которого долистал; ищет по id, до 60 подгрузок; ещё раз = отмена).
-Правый клик по кнопкам: Pin current position, Auto-save on/off, Reset memory. Ручная метка (Pin current position) одноразовая: после успешного перехода к ней снова включается автозапоминание с этого места; если блок не найден или поиск отменён, метка остаётся. Кольцо на кнопке показывает прогресс. Повторные клики по стрелкам ставят ещё циклы в очередь (точки в кнопке); правый клик по работающей стрелке или клик по булавке очищает очередь.
-
-## Окно Connect
-`connect.js` на всех страницах прячет твоё имя и кружок справа у каналов в окне Connect (окно ищется по полю «Type to search»). Имя в `myNames` в начале `connect.js`.
+[Наверх](#top)
