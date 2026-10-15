@@ -53,6 +53,7 @@
   const isMine = (o, meId) => {
     if (!CFG.hideMine || meId == null) return false;
     if (o.__typename === 'Channel') { const ow = o.owner || o.user; return !!(ow && ow.__typename !== 'Group' && String(ow.id) === String(meId)) || !!(myHref && o.href && o.href.startsWith(myHref + '/')); }
+    if (!owners.has(String(o.id))) return true;   // владелец неизвестен (ошибка) -> пока не показываем
     const u = owners.get(String(o.id));
     if (!u) return false;
     if (String(u.id) === String(meId)) { if (!myHref && u.slug) myHref = '/' + u.slug; return true; }
@@ -65,13 +66,18 @@
   };
   // Владелец блока: публичный REST https://api.are.na/v2/blocks/<id> (проверено: отдаёт user {id, slug}).
   // Простой GET без cookies и заголовков (CORS allow-origin *). Кэш по id.
+  // -> {id, slug} | null (блок недоступен публично: приватный/удалён) | undefined (ошибка сети/лимит, не кэшируем)
   async function ownerOf(id) {
-    try {
-      const res = await origFetch('https://api.are.na/v2/blocks/' + id, { credentials: 'omit' });
-      if (!res.ok) return null;                 // приватный блок и т.п.
-      const j = await res.json();
-      return j && j.user ? { id: j.user.id, slug: j.user.slug } : null;
-    } catch (e) { return null; }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await origFetch('https://api.are.na/v2/blocks/' + id, { credentials: 'omit' });
+        if (res.ok) { const j = await res.json(); return j && j.user ? { id: j.user.id, slug: j.user.slug } : null; }
+        if (res.status !== 429 && res.status < 500) return null; // 401/403/404: приватный или удалён
+        diag('owner lookup HTTP ' + res.status + ' for block ' + id + (attempt ? ', giving up' : ', retrying'));
+      } catch (e) { diag('owner lookup failed for block ' + id + (attempt ? ', giving up' : ', retrying'), String(e)); }
+      await new Promise(r => setTimeout(r, 800));
+    }
+    return undefined;
   }
   async function ensureOwners(req, groups) {
     if (!CFG.hideMine) return;
@@ -84,7 +90,7 @@
     const uniq = [...new Set(ids)].filter(id => /^\d+$/.test(id));
     if (!uniq.length) return;
     let i = 0;
-    const worker = async () => { while (i < uniq.length) { const id = uniq[i++]; owners.set(id, await ownerOf(id)); } };
+    const worker = async () => { while (i < uniq.length) { const id = uniq[i++]; const o = await ownerOf(id); if (o !== undefined) owners.set(id, o); } };
     await Promise.all(Array.from({ length: Math.min(6, uniq.length) }, worker));
     diag('owners lookup: asked ' + uniq.length + ', found ' + uniq.filter(id => owners.get(id)).length + ', myHref ' + myHref);
   }
@@ -99,7 +105,7 @@
       for (const o of g.objects || []) {
         if (!o) continue;
         { const mine = isMine(o, me.id), ow = o.__typename === 'Channel' ? (o.owner || o.user) : owners.get(String(o.id));
-          diag(o.__typename, o.id, 'by actor', (g.actor || g.owner || {}).slug || (g.actor || g.owner || {}).id, 'owner', ow ? (ow.slug || ow.name || ow.id) : 'unknown', mine ? 'HIDDEN (mine)' : 'shown');
+          diag(o.__typename, o.id, 'by actor', (g.actor || g.owner || {}).slug || (g.actor || g.owner || {}).id, 'owner', ow ? (ow.slug || ow.name || ow.id) : 'unknown', mine ? (o.__typename !== 'Channel' && !owners.has(String(o.id)) ? 'HIDDEN (owner lookup failed)' : 'HIDDEN (mine)') : 'shown');
           if (mine) continue; }
         const k = keyOf(o);
         if (seen.has(k)) continue;
@@ -193,7 +199,7 @@
   window.fetch = async function (input, init) {
     let req = null, body = null;
     try {
-      if (onPath() && !(init && init.__afc)) {
+      if (!(init && init.__afc)) {
         req = await readReq(input, init);
         if (req && typeof req.bodyText === 'string' && req.bodyText.includes(CFG.operation)) body = JSON.parse(req.bodyText);
       }
