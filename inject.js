@@ -55,29 +55,38 @@
     if (o.__typename === 'Channel') { const ow = o.owner || o.user; return !!(ow && ow.__typename !== 'Group' && String(ow.id) === String(meId)) || !!(myHref && o.href && o.href.startsWith(myHref + '/')); }
     const u = owners.get(String(o.id));
     if (!u) return false;
-    return String(u.id) === String(meId) || (!!myHref && !!u.slug && '/' + u.slug === myHref);
+    if (String(u.id) === String(meId)) { if (!myHref && u.slug) myHref = '/' + u.slug; return true; }
+    return !!myHref && !!u.slug && '/' + u.slug === myHref;
   };
   const isMyTarget = g => {
     if (!CFG.hideMine || !myHref) return false;
     const t = g.target;
     return !!(t && t.href && t.href.startsWith(myHref + '/'));
   };
+  // Владелец блока: публичный REST https://api.are.na/v2/blocks/<id> (проверено: отдаёт user {id, slug}).
+  // Простой GET без cookies и заголовков (CORS allow-origin *). Кэш по id.
+  async function ownerOf(id) {
+    try {
+      const res = await origFetch('https://api.are.na/v2/blocks/' + id, { credentials: 'omit' });
+      if (!res.ok) return null;                 // приватный блок и т.п.
+      const j = await res.json();
+      return j && j.user ? { id: j.user.id, slug: j.user.slug } : null;
+    } catch (e) { return null; }
+  }
   async function ensureOwners(req, groups) {
     if (!CFG.hideMine) return;
+    if (!myHref) {
+      try { const j = await postJson(req, { operationName: 'AfcMe', query: 'query AfcMe { me { id href } }', variables: {} });
+        if (j && j.data && j.data.me && j.data.me.href) myHref = j.data.me.href.replace(/\/+$/, ''); } catch (e) {}
+    }
     const ids = [];
-    for (const g of groups) for (const o of g.objects || []) if (o && o.__typename !== 'Channel' && o.__typename !== 'User' && o.__typename !== 'Group' && !owners.has(String(o.id))) ids.push(String(o.id));
-    if (!ids.length && myHref) return;
+    for (const g of groups) for (const o of g.objects || []) if (o && !['Channel', 'User', 'Group'].includes(o.__typename) && !owners.has(String(o.id))) ids.push(String(o.id));
     const uniq = [...new Set(ids)].filter(id => /^\d+$/.test(id));
-    const q = 'query AfcOwners {' + (myHref ? '' : ' me { id href }') + uniq.map(id => ' b' + id + ': block(id: "' + id + '") { __typename ' + ['Image', 'Text', 'Link', 'Embed', 'Attachment'].map(t => '... on ' + t + ' { user { id slug } }').join(' ') + ' }').join('') + ' }';
-    if (q === 'query AfcOwners { }') return;
-    try {
-      const j = await postJson(req, { operationName: 'AfcOwners', query: q, variables: {} });
-      const d = (j && j.data) || {};
-      if (d.me && d.me.href) myHref = d.me.href.replace(/\/+$/, '');
-      for (const id of uniq) { const b = d['b' + id]; owners.set(id, b && b.user ? { id: b.user.id, slug: b.user.slug } : null); }
-      diag('owners lookup', { asked: uniq.length, found: uniq.filter(id => owners.get(id)).length, myHref, errors: j && j.errors });
-      if (j && j.errors) warn('owners query errors', j.errors);
-    } catch (e) { warn('owners query failed', e); }
+    if (!uniq.length) return;
+    let i = 0;
+    const worker = async () => { while (i < uniq.length) { const id = uniq[i++]; owners.set(id, await ownerOf(id)); } };
+    await Promise.all(Array.from({ length: Math.min(6, uniq.length) }, worker));
+    diag('owners lookup: asked ' + uniq.length + ', found ' + uniq.filter(id => owners.get(id)).length + ', myHref ' + myHref);
   }
 
   // Отбирает новые блоки из групп одной сырой страницы. Возвращает {objects, host}.
