@@ -16,7 +16,7 @@ A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.
 - No author/time headers: one continuous Explore-style grid, every row full. Column count follows the window width like Explore (force it with `columns` in `inject.js`).
 - Bottom-left pill:
   - ↓ scrolls 10 rows, ↓↓ scrolls 20 rows. Click again while running to queue more runs (dots = queued). Right-click a running arrow to stop and clear the queue.
-  - Pin: jumps back to the furthest point you reached (remembered across reloads, searched by block id, up to 60 loads). Click again to cancel. Hover shows a preview, the date and the distance.
+  - Pin: jumps back to the furthest point you reached (remembered across reloads, searched by block id, keeps loading until found or the feed ends). Click again to cancel. Hover shows a preview, the date and the distance.
   - The ring inside a button shows progress.
   - Right-click menu: Pin current position, Auto-save on/off, Hide your name (on by default; controls the Connect popup tweak below), Reset memory.
 - The saved point only moves down: scrolling up or jumping never moves it up. Only Reset memory or a manual pin can set an earlier point. A manual pin is used once, then auto-save continues from there.
@@ -44,7 +44,7 @@ A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.
 - Без шапок с автором и временем: одна сплошная сетка как на Explore, все ряды полные. Колонки считаются как на Explore по ширине окна (зафиксировать: `columns` в `inject.js`).
 - Кнопки слева внизу:
   - ↓ на 10 рядов, ↓↓ на 20. Повторные клики во время прокрутки ставят ещё циклы в очередь (точки в кнопке). Правый клик по работающей стрелке останавливает и чистит очередь.
-  - Булавка: возвращает к самому дальнему месту, до которого долистал (помнится после перезагрузки, ищется по id блока, до 60 подгрузок). Ещё клик = отмена. При наведении превью, дата и расстояние.
+  - Булавка: возвращает к самому дальнему месту, до которого долистал (помнится после перезагрузки, ищется по id блока, грузит ленту, пока не найдёт или лента не кончится). Ещё клик = отмена. При наведении превью, дата и расстояние.
   - Кольцо в кнопке показывает прогресс.
   - Правый клик: Pin current position, Auto-save on/off, Hide your name (по умолчанию вкл; управляет скрытием имени в окне Connect, см. ниже), Reset memory.
 - Запомненное место двигается только вниз: прокрутка вверх и переходы его не поднимают. Поднять можно только через Reset memory или ручную метку. Ручная метка одноразовая, после перехода к ней снова работает автозапоминание.

@@ -15,7 +15,7 @@
     minColWidth: 260, colGap: 15, rowGap: 45, sidePadding: 20, // сетка Explore
     navSelector: 'header, nav',
     restoreMinScroll: 600, restoreMinIndex: 8, saveEveryMs: 1000,
-    restoreMaxPages: 60, maxQueue: 9, rows1: 10, rows2: 20, restoreWaitMs: 6000,
+    restoreMaxPages: Infinity, maxQueue: 9, rows1: 10, rows2: 20, restoreWaitMs: 6000,
     timeRegex: /\b(ago|just now|yesterday)\b/i,               // сколько страниц подряд без новых блоков подтягиваем сами
     debug: true,
   };
@@ -355,9 +355,9 @@
           if (cards().length !== before || document.documentElement.scrollHeight > h0 + 50 || findCard(saved.id)) break;
           window.scrollTo(0, document.documentElement.scrollHeight);
         }
-        if (restoring && Date.now() - t0 >= CFG.restoreWaitMs && !findCard(saved.id)) { flash('Not found: the feed changed'); return; }
+        if (restoring && Date.now() - t0 >= CFG.restoreWaitMs && !findCard(saved.id)) { flash('Not found: reached the end of the feed'); return; }
       }
-      if (restoring) flash('Not found within ' + CFG.restoreMaxPages + ' loads');
+      if (restoring && isFinite(CFG.restoreMaxPages)) flash('Not found within ' + CFG.restoreMaxPages + ' loads');
     } finally { restoring = false; clearInterval(pt); ui && prog(ui.pin, null); }
   }
 
