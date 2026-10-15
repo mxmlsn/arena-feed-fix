@@ -10,7 +10,7 @@
     operation: 'FeedMeQuery',
     paths: ['/', '/feed'],
     maxSkipPages: 15,
-    hideMine: true,      // прятать чужие сохранения моих блоков и добавления в мои каналы
+    hideMine: true, lookupTimeoutMs: 4000,      // прятать чужие сохранения моих блоков и добавления в мои каналы
     columns: 0,          // 0 = как на Explore по ширине окна; число = принудительно (например 4)
     minColWidth: 260, colGap: 15, rowGap: 45, sidePadding: 20, // сетка Explore
     navSelector: 'header, nav',
@@ -53,7 +53,7 @@
   const isMine = (o, meId) => {
     if (!CFG.hideMine || meId == null) return false;
     if (o.__typename === 'Channel') { const ow = o.owner || o.user; return !!(ow && ow.__typename !== 'Group' && String(ow.id) === String(meId)) || !!(myHref && o.href && o.href.startsWith(myHref + '/')); }
-    if (!owners.has(String(o.id))) return true;   // владелец неизвестен (ошибка) -> пока не показываем
+    if (!owners.has(String(o.id))) return hideUnknown;   // неизвестен: прячем, только если сбоев мало
     const u = owners.get(String(o.id));
     if (!u) return false;
     if (String(u.id) === String(meId)) { if (!myHref && u.slug) myHref = '/' + u.slug; return true; }
@@ -67,10 +67,13 @@
   // Владелец блока: публичный REST https://api.are.na/v2/blocks/<id> (проверено: отдаёт user {id, slug}).
   // Простой GET без cookies и заголовков (CORS allow-origin *). Кэш по id.
   // -> {id, slug} | null (блок недоступен публично: приватный/удалён) | undefined (ошибка сети/лимит, не кэшируем)
+  const inflight = new Map(); let hideUnknown = true, lookupPausedUntil = 0;
+  function lookupOnce(id) { if (!inflight.has(id)) inflight.set(id, ownerOf(id).finally(() => setTimeout(() => inflight.delete(id), 0))); return inflight.get(id); }
   async function ownerOf(id) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await origFetch('https://api.are.na/v2/blocks/' + id, { credentials: 'omit' });
+        const ac = new AbortController(); const tt = setTimeout(() => ac.abort(), 3000);
+        const res = await origFetch('https://api.are.na/v2/blocks/' + id, { credentials: 'omit', signal: ac.signal }).finally(() => clearTimeout(tt));
         if (res.ok) { const j = await res.json(); return j && j.user ? { id: j.user.id, slug: j.user.slug } : null; }
         if (res.status !== 429 && res.status < 500) return null; // 401/403/404: приватный или удалён
         diag('owner lookup HTTP ' + res.status + ' for block ' + id + (attempt ? ', giving up' : ', retrying'));
@@ -82,16 +85,23 @@
   async function ensureOwners(req, groups) {
     if (!CFG.hideMine) return;
     if (!myHref) {
-      try { const j = await postJson(req, { operationName: 'AfcMe', query: 'query AfcMe { me { id href } }', variables: {} });
+      try { const j = await Promise.race([postJson(req, { operationName: 'AfcMe', query: 'query AfcMe { me { id href } }', variables: {} }), new Promise(r => setTimeout(() => r(null), 3000))]);
         if (j && j.data && j.data.me && j.data.me.href) myHref = j.data.me.href.replace(/\/+$/, ''); } catch (e) {}
     }
     const ids = [];
     for (const g of groups) for (const o of g.objects || []) if (o && !['Channel', 'User', 'Group'].includes(o.__typename) && !owners.has(String(o.id))) ids.push(String(o.id));
     const uniq = [...new Set(ids)].filter(id => /^\d+$/.test(id));
     if (!uniq.length) return;
-    let i = 0;
-    const worker = async () => { while (i < uniq.length) { const id = uniq[i++]; const o = await ownerOf(id); if (o !== undefined) owners.set(id, o); } };
-    await Promise.all(Array.from({ length: Math.min(6, uniq.length) }, worker));
+    if (Date.now() < lookupPausedUntil) { hideUnknown = false; diag('owners lookup paused after failures, showing unknown'); return; }
+    let i = 0, failed = 0;
+    const worker = async () => { while (i < uniq.length) { const id = uniq[i++]; const o = await lookupOnce(id); if (o !== undefined) owners.set(id, o); else failed++; } };
+    // не дольше CFG.lookupTimeoutMs на страницу; что не успело, считается неизвестным
+    const done = await Promise.race([Promise.all(Array.from({ length: Math.min(4, uniq.length) }, worker)).then(() => true), new Promise(r => setTimeout(() => r(false), CFG.lookupTimeoutMs))]);
+    const unknown = uniq.filter(id => !owners.has(id)).length;
+    // неизвестных мало -> прячем их (надёжнее); много (лимит, сбой, таймаут) -> показываем, чтобы лента не опустела
+    hideUnknown = done && unknown <= uniq.length / 2;
+    if (!hideUnknown) { lookupPausedUntil = Date.now() + 60000; i = uniq.length; }
+    if (!done || unknown) diag('owners lookup: ' + (done ? '' : 'timeout, ') + unknown + ' of ' + uniq.length + ' unknown, ' + (hideUnknown ? 'hiding them' : 'showing them'));
     diag('owners lookup: asked ' + uniq.length + ', found ' + uniq.filter(id => owners.get(id)).length + ', myHref ' + myHref);
   }
 
@@ -199,7 +209,7 @@
   window.fetch = async function (input, init) {
     let req = null, body = null;
     try {
-      if (!(init && init.__afc)) {
+      if (onPath() && !(init && init.__afc)) {
         req = await readReq(input, init);
         if (req && typeof req.bodyText === 'string' && req.bodyText.includes(CFG.operation)) body = JSON.parse(req.bodyText);
       }
