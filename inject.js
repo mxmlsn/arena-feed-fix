@@ -49,11 +49,13 @@
   // block(id) { ... on Block { user { id } } }. Свой href (/slug) берём из me { href }.
   const owners = new Map(); // id блока -> id владельца
   let myHref = null;
+  const diag = (...a) => console.log('[arena-feed-fix]', ...a);
   const isMine = (o, meId) => {
     if (!CFG.hideMine || meId == null) return false;
     if (o.__typename === 'Channel') { const ow = o.owner || o.user; return !!(ow && ow.__typename !== 'Group' && String(ow.id) === String(meId)) || !!(myHref && o.href && o.href.startsWith(myHref + '/')); }
     const u = owners.get(String(o.id));
-    return u != null && String(u) === String(meId);
+    if (!u) return false;
+    return String(u.id) === String(meId) || (!!myHref && !!u.slug && '/' + u.slug === myHref);
   };
   const isMyTarget = g => {
     if (!CFG.hideMine || !myHref) return false;
@@ -66,13 +68,14 @@
     for (const g of groups) for (const o of g.objects || []) if (o && o.__typename !== 'Channel' && o.__typename !== 'User' && o.__typename !== 'Group' && !owners.has(String(o.id))) ids.push(String(o.id));
     if (!ids.length && myHref) return;
     const uniq = [...new Set(ids)].filter(id => /^\d+$/.test(id));
-    const q = 'query AfcOwners {' + (myHref ? '' : ' me { id href }') + uniq.map(id => ' b' + id + ': block(id: "' + id + '") { ... on Block { user { id } } }').join('') + ' }';
+    const q = 'query AfcOwners {' + (myHref ? '' : ' me { id href }') + uniq.map(id => ' b' + id + ': block(id: "' + id + '") { __typename ' + ['Image', 'Text', 'Link', 'Embed', 'Attachment'].map(t => '... on ' + t + ' { user { id slug } }').join(' ') + ' }').join('') + ' }';
     if (q === 'query AfcOwners { }') return;
     try {
       const j = await postJson(req, { operationName: 'AfcOwners', query: q, variables: {} });
       const d = (j && j.data) || {};
       if (d.me && d.me.href) myHref = d.me.href.replace(/\/+$/, '');
-      for (const id of uniq) { const b = d['b' + id]; owners.set(id, b && b.user ? b.user.id : null); }
+      for (const id of uniq) { const b = d['b' + id]; owners.set(id, b && b.user ? { id: b.user.id, slug: b.user.slug } : null); }
+      diag('owners lookup', { asked: uniq.length, found: uniq.filter(id => owners.get(id)).length, myHref, errors: j && j.errors });
       if (j && j.errors) warn('owners query errors', j.errors);
     } catch (e) { warn('owners query failed', e); }
   }
@@ -81,12 +84,14 @@
   function pickBlocks(me, groups, seen, kept) {
     const objects = []; let host = null;
     for (const g of groups) {
-      if (isOwn(g, me.id)) continue;
-      if (isMyTarget(g)) continue;           // кто-то добавил что-то в МОЙ канал
+      if (isOwn(g, me.id)) { diag('item hidden: my own save', g.id); continue; }
+      if (isMyTarget(g)) { diag('item hidden: added to my channel', g.target && g.target.href); continue; }           // кто-то добавил что-то в МОЙ канал
       if (!host) host = g;
       for (const o of g.objects || []) {
         if (!o) continue;
-        if (isMine(o, me.id)) continue;      // мой блок или мой канал, сохранённый кем-то
+        { const mine = isMine(o, me.id), ow = o.__typename === 'Channel' ? (o.owner || o.user) : owners.get(String(o.id));
+          diag(o.__typename, o.id, 'by actor', (g.actor || g.owner || {}).slug || (g.actor || g.owner || {}).id, 'owner', ow ? (ow.slug || ow.name || ow.id) : 'unknown', mine ? 'HIDDEN (mine)' : 'shown');
+          if (mine) continue; }
         const k = keyOf(o);
         if (seen.has(k)) continue;
         seen.add(k); kept.add(k); objects.push(o);
