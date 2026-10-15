@@ -10,7 +10,7 @@
     operation: 'FeedMeQuery',
     paths: ['/', '/feed'],
     maxSkipPages: 15,
-    hideMine: true, lookupTimeoutMs: 4000,      // прятать чужие сохранения моих блоков и добавления в мои каналы
+    hideMine: true, cleanupMs: 1000, lookupConcurrency: 6,      // прятать чужие сохранения моих блоков и добавления в мои каналы
     columns: 0,          // 0 = как на Explore по ширине окна; число = принудительно (например 4)
     minColWidth: 260, colGap: 15, rowGap: 45, sidePadding: 20, // сетка Explore
     navSelector: 'header, nav',
@@ -113,7 +113,7 @@
   }
   function pump() {
     if (Date.now() < lookupPausedUntil) { setTimeout(pump, lookupPausedUntil - Date.now() + 50); return; }
-    while (running < 4 && queue.length) {
+    while (running < CFG.lookupConcurrency && queue.length) {
       const id = queue.shift(); running++;
       lookupOnce(id).then(o => {
         if (o !== undefined) { owners.set(id, o); persistOwners(); if (o && String(o.id) === String(myId)) { if (!myHref && o.slug) myHref = '/' + o.slug; diag('Image ' + id + ' is mine, removing card'); hideMineCards(); } }
@@ -123,6 +123,12 @@
     }
   }
   let failStreak = 0;
+  async function waitKnown(groups, deadline) {
+    if (!CFG.hideMine) return;
+    const ids = [];
+    for (const g of groups) for (const o of g.objects || []) if (o && !['Channel', 'User', 'Group'].includes(o.__typename)) ids.push(String(o.id));
+    while (Date.now() < deadline && Date.now() >= lookupPausedUntil && ids.some(id => !owners.has(id))) await new Promise(r => setTimeout(r, 40));
+  }
 
   // Убираем из DOM карточки блоков, которые оказались моими (в т.ч. после перерисовки списка).
   function hideMineCards() {
@@ -193,6 +199,7 @@
     const vars = body.variables || {};
     const off0 = Number(vars.offset) || 0, limit = Number(vars.limit) || 12;
     if (!groupsOf(json)) return json;          // не та форма, отдаём как есть
+    const deadline = Date.now() + CFG.cleanupMs;
     if (off0 === 0) { pages.clear(); carry.clear(); order.clear(); }
     lastOffset = off0;
     const cols = columns();
@@ -203,7 +210,8 @@
       if (!raw) { end = true; break; }
       if (raw.length === 0) { end = true; break; } // настоящий конец ленты
       if (cur.data.me && cur.data.me.id != null && String(myId) !== String(cur.data.me.id)) { myId = cur.data.me.id; persistOwners(); }
-      lookupInBackground(req, raw);   // не ждём
+      lookupInBackground(req, raw);
+      await waitKnown(raw, deadline);  // ждём не дольше общего окна CFG.cleanupMs на страницу
       const r = pickBlocks(cur.data.me, raw, seen, kept);
       if (r.host) host = r.host;
       if (!host && !lastHost) lastHost = raw[0];
