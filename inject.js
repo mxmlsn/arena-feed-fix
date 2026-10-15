@@ -48,12 +48,12 @@
   // В ответе ленты у блоков нет владельца, поэтому догружаем его одним запросом на страницу:
   // block(id) { ... on Block { user { id } } }. Свой href (/slug) берём из me { href }.
   const owners = new Map(); // id блока -> id владельца
-  let myHref = null;
+  let myHref = null, myId = null;
   const diag = (...a) => console.log('[arena-feed-fix]', ...a);
   const isMine = (o, meId) => {
     if (!CFG.hideMine || meId == null) return false;
     if (o.__typename === 'Channel') { const ow = o.owner || o.user; return !!(ow && ow.__typename !== 'Group' && String(ow.id) === String(meId)) || !!(myHref && o.href && o.href.startsWith(myHref + '/')); }
-    if (!owners.has(String(o.id))) return hideUnknown;   // неизвестен: прячем, только если сбоев мало
+    if (!owners.has(String(o.id))) return false;   // ещё неизвестен: показываем, проверим в фоне
     const u = owners.get(String(o.id));
     if (!u) return false;
     if (String(u.id) === String(meId)) { if (!myHref && u.slug) myHref = '/' + u.slug; return true; }
@@ -82,27 +82,57 @@
     }
     return undefined;
   }
-  async function ensureOwners(req, groups) {
+  // Фоновый поиск владельцев: ответ ленты НЕ ждёт. Что найдено, сохраняется в localStorage,
+  // а уже показанные карточки моих блоков убираются из DOM.
+  const OWN_KEY = 'afc-owners-v1', ME_KEY = 'afc-me-v1';
+  try { const o = JSON.parse(localStorage.getItem(OWN_KEY) || '{}'); for (const k in o) owners.set(k, o[k] ? { id: o[k] } : null); } catch (e) {}
+  try { const m = JSON.parse(localStorage.getItem(ME_KEY) || 'null'); if (m) { myId = m.id; myHref = myHref || m.href || null; } } catch (e) {}
+  let persistT = 0;
+  function persistOwners() {
+    clearTimeout(persistT);
+    persistT = setTimeout(() => {
+      const o = {}; let n = 0;
+      for (const [k, v] of [...owners].reverse()) { if (n++ > 30000) break; o[k] = v ? v.id : 0; } // последние 30k
+      try { localStorage.setItem(OWN_KEY, JSON.stringify(o)); localStorage.setItem(ME_KEY, JSON.stringify({ id: myId, href: myHref })); } catch (e) {}
+    }, 1000);
+  }
+  const queue = []; let running = 0;
+  function lookupInBackground(req, groups) {
     if (!CFG.hideMine) return;
-    if (!myHref) {
-      try { const j = await Promise.race([postJson(req, { operationName: 'AfcMe', query: 'query AfcMe { me { id href } }', variables: {} }), new Promise(r => setTimeout(() => r(null), 3000))]);
-        if (j && j.data && j.data.me && j.data.me.href) myHref = j.data.me.href.replace(/\/+$/, ''); } catch (e) {}
+    if (!myHref && !lookupInBackground.me) {
+      lookupInBackground.me = true;
+      Promise.race([postJson(req, { operationName: 'AfcMe', query: 'query AfcMe { me { id href } }', variables: {} }), new Promise(r => setTimeout(() => r(null), 3000))])
+        .then(j => { if (j && j.data && j.data.me && j.data.me.href) { myHref = j.data.me.href.replace(/\/+$/, ''); persistOwners(); } }).catch(() => {});
     }
-    const ids = [];
-    for (const g of groups) for (const o of g.objects || []) if (o && !['Channel', 'User', 'Group'].includes(o.__typename) && !owners.has(String(o.id))) ids.push(String(o.id));
-    const uniq = [...new Set(ids)].filter(id => /^\d+$/.test(id));
-    if (!uniq.length) return;
-    if (Date.now() < lookupPausedUntil) { hideUnknown = false; diag('owners lookup paused after failures, showing unknown'); return; }
-    let i = 0, failed = 0;
-    const worker = async () => { while (i < uniq.length) { const id = uniq[i++]; const o = await lookupOnce(id); if (o !== undefined) owners.set(id, o); else failed++; } };
-    // не дольше CFG.lookupTimeoutMs на страницу; что не успело, считается неизвестным
-    const done = await Promise.race([Promise.all(Array.from({ length: Math.min(4, uniq.length) }, worker)).then(() => true), new Promise(r => setTimeout(() => r(false), CFG.lookupTimeoutMs))]);
-    const unknown = uniq.filter(id => !owners.has(id)).length;
-    // неизвестных мало -> прячем их (надёжнее); много (лимит, сбой, таймаут) -> показываем, чтобы лента не опустела
-    hideUnknown = done && unknown <= uniq.length / 2;
-    if (!hideUnknown) { lookupPausedUntil = Date.now() + 60000; i = uniq.length; }
-    if (!done || unknown) diag('owners lookup: ' + (done ? '' : 'timeout, ') + unknown + ' of ' + uniq.length + ' unknown, ' + (hideUnknown ? 'hiding them' : 'showing them'));
-    diag('owners lookup: asked ' + uniq.length + ', found ' + uniq.filter(id => owners.get(id)).length + ', myHref ' + myHref);
+    for (const g of groups) for (const o of g.objects || []) {
+      const id = o && String(o.id);
+      if (!o || ['Channel', 'User', 'Group'].includes(o.__typename) || !/^\d+$/.test(id) || owners.has(id) || queue.includes(id) || inflight.has(id)) continue;
+      queue.push(id);
+    }
+    pump();
+  }
+  function pump() {
+    if (Date.now() < lookupPausedUntil) { setTimeout(pump, lookupPausedUntil - Date.now() + 50); return; }
+    while (running < 4 && queue.length) {
+      const id = queue.shift(); running++;
+      lookupOnce(id).then(o => {
+        if (o !== undefined) { owners.set(id, o); persistOwners(); if (o && String(o.id) === String(myId)) { if (!myHref && o.slug) myHref = '/' + o.slug; diag('Image ' + id + ' is mine, removing card'); hideMineCards(); } }
+        else { failStreak++; if (failStreak >= 4) { lookupPausedUntil = Date.now() + 60000; failStreak = 0; diag('owners lookup: repeated failures, pausing 60s'); } }
+        if (o !== undefined) failStreak = 0;
+      }).finally(() => { running--; pump(); });
+    }
+  }
+  let failStreak = 0;
+
+  // Убираем из DOM карточки блоков, которые оказались моими (в т.ч. после перерисовки списка).
+  function hideMineCards() {
+    if (!CFG.hideMine || myId == null) return;
+    document.querySelectorAll('.afc-grid a[href*="/block/"]').forEach(a => {
+      const m = (a.getAttribute('href') || '').match(/\/block\/(\d+)/); if (!m) return;
+      const u = owners.get(m[1]); if (!u || String(u.id) !== String(myId)) return;
+      let cell = a; while (cell.parentElement && !cell.parentElement.classList.contains('afc-grid')) cell = cell.parentElement;
+      if (cell.parentElement && !cell.hasAttribute('data-afc-mine')) { cell.setAttribute('data-afc-mine', '1'); cell.style.setProperty('display', 'none', 'important'); }
+    });
   }
 
   // Отбирает новые блоки из групп одной сырой страницы. Возвращает {objects, host}.
@@ -172,7 +202,8 @@
       const raw = groupsOf(cur);
       if (!raw) { end = true; break; }
       if (raw.length === 0) { end = true; break; } // настоящий конец ленты
-      await ensureOwners(req, raw);
+      if (cur.data.me && cur.data.me.id != null && String(myId) !== String(cur.data.me.id)) { myId = cur.data.me.id; persistOwners(); }
+      lookupInBackground(req, raw);   // не ждём
       const r = pickBlocks(cur.data.me, raw, seen, kept);
       if (r.host) host = r.host;
       if (!host && !lastHost) lastHost = raw[0];
@@ -266,6 +297,7 @@
       if (sp.childElementCount || !CFG.timeRegex.test(sp.textContent || '') || sp.closest('.' + GRID + ', a') || !inFeed(sp)) return;
       hide(sp.parentElement && sp.parentElement.childElementCount === 1 ? sp.parentElement : sp);
     });
+    hideMineCards();
     document.documentElement.style.setProperty('--afc-cols', columns());
   }
   const touched = new Set();
@@ -290,7 +322,7 @@
   const posKey = () => 'afc-feed-pos:' + (location.pathname.replace(/\/+$/, '') || '/');
   const AUTO_KEY = 'afc-auto-save';
   const blockIdOf = a => { const m = (a.getAttribute('href') || '').match(/\/block\/(\d+)/); return m && m[1]; };
-  const cards = () => [...document.querySelectorAll('.' + GRID + ' a[href*="/block/"]')];
+  const cards = () => [...document.querySelectorAll('.' + GRID + ' > :not([data-afc-mine]) a[href*="/block/"], .' + GRID + ' > a:not([data-afc-mine])[href*="/block/"]')];
   const findCard = id => cards().find(a => blockIdOf(a) === String(id));
   const ls = { get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }, del(k) { try { localStorage.removeItem(k); } catch (e) {} } };
@@ -316,7 +348,7 @@
   }
   addEventListener('scroll', () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => savePos(false), 700); }, { passive: true });
 
-  function rowHeight() { const c = document.querySelector('.' + GRID + ' > *'); return c ? c.getBoundingClientRect().height + CFG.rowGap : 400; }
+  function rowHeight() { const c = document.querySelector('.' + GRID + ' > :not([data-afc-mine]):not([data-afc-hidden])'); return c ? c.getBoundingClientRect().height + CFG.rowGap : 400; }
   function prog(btn, p) { if (!btn) return; if (p == null) { btn.classList.remove('afc-prog', 'afc-busy'); btn.style.removeProperty('--p'); return; }
     if (p < 0) { btn.classList.add('afc-busy'); return; } btn.classList.remove('afc-busy'); btn.classList.add('afc-prog'); btn.style.setProperty('--p', Math.min(1, p)); }
   // очередь: клики во время прокрутки добавляют ещё циклы (точки внутри кнопки)
