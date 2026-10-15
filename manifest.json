@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "arena-feed-fix",
-  "version": "3.9.0",
+  "version": "3.10.0",
   "description": "Главная are.na как Explore: только блоки подписок, без своих и без дублей.",
   "content_scripts": [
     {

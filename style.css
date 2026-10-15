@@ -6,7 +6,7 @@ html.afc-home .afc-grid {
 }
 /* группы идут встык, с тем же зазором, что между рядами */
 html.afc-home .afc-group { padding-top: 0 !important; padding-bottom: 45px !important; margin-top: 0 !important; margin-bottom: 0 !important; border: 0 !important; }
-html.afc-home hr { display: none !important; }
+html.afc-home [data-testid="virtuoso-item-list"] hr { display: none !important; }
 /* левый нижний угол: навигация по ленте */
 #afc-nav { position: fixed; left: 16px; bottom: 16px; z-index: 1000; display: flex; flex-direction: column; gap: 6px;
   padding: 6px; border-radius: 999px; background: var(--colors-gray2, #e6e6e6); }

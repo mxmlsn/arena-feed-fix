@@ -11,6 +11,7 @@ A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.
 
 ### What it does
 - Hides your own saves, so only people you follow remain.
+- Also hides other people saving your blocks or your channels, and people adding things to your channels (turn off with `hideMine` in `inject.js`).
 - Removes repeated blocks: a block connected to several channels shows once (the topmost).
 - No author/time headers: one continuous Explore-style grid, every row full. Column count follows the window width like Explore (force it with `columns` in `inject.js`).
 - Bottom-left pill:
@@ -38,6 +39,7 @@ A Chrome extension that cleans up the Are.na following feed (`are.na/` and `are.
 
 ### Что делает
 - Убирает твои сохранения, остаются только те, на кого подписан.
+- Также убирает, когда другие сохраняют твои блоки или каналы, и когда что-то добавляют в твои каналы (выключается `hideMine` в `inject.js`).
 - Убирает повторы: блок, добавленный в несколько каналов, показывается один раз (самый верхний).
 - Без шапок с автором и временем: одна сплошная сетка как на Explore, все ряды полные. Колонки считаются как на Explore по ширине окна (зафиксировать: `columns` в `inject.js`).
 - Кнопки слева внизу:

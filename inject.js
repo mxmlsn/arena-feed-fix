@@ -10,6 +10,7 @@
     operation: 'FeedMeQuery',
     paths: ['/', '/feed'],
     maxSkipPages: 15,
+    hideMine: true,      // прятать чужие сохранения моих блоков и добавления в мои каналы
     columns: 0,          // 0 = как на Explore по ширине окна; число = принудительно (например 4)
     minColWidth: 260, colGap: 15, rowGap: 45, sidePadding: 20, // сетка Explore
     navSelector: 'header, nav',
@@ -43,14 +44,49 @@
   };
   const seenBefore = off => { const s = new Set(); for (const [o, k] of pages) if (o < off) k.forEach(x => s.add(x)); return s; };
 
+  // ---------- чужие сохранения МОИХ блоков / каналов ----------
+  // В ответе ленты у блоков нет владельца, поэтому догружаем его одним запросом на страницу:
+  // block(id) { ... on Block { user { id } } }. Свой href (/slug) берём из me { href }.
+  const owners = new Map(); // id блока -> id владельца
+  let myHref = null;
+  const isMine = (o, meId) => {
+    if (!CFG.hideMine || meId == null) return false;
+    if (o.__typename === 'Channel') { const ow = o.owner || o.user; return !!(ow && ow.__typename !== 'Group' && String(ow.id) === String(meId)) || !!(myHref && o.href && o.href.startsWith(myHref + '/')); }
+    const u = owners.get(String(o.id));
+    return u != null && String(u) === String(meId);
+  };
+  const isMyTarget = g => {
+    if (!CFG.hideMine || !myHref) return false;
+    const t = g.target;
+    return !!(t && t.href && t.href.startsWith(myHref + '/'));
+  };
+  async function ensureOwners(req, groups) {
+    if (!CFG.hideMine) return;
+    const ids = [];
+    for (const g of groups) for (const o of g.objects || []) if (o && o.__typename !== 'Channel' && o.__typename !== 'User' && o.__typename !== 'Group' && !owners.has(String(o.id))) ids.push(String(o.id));
+    if (!ids.length && myHref) return;
+    const uniq = [...new Set(ids)].filter(id => /^\d+$/.test(id));
+    const q = 'query AfcOwners {' + (myHref ? '' : ' me { id href }') + uniq.map(id => ' b' + id + ': block(id: "' + id + '") { ... on Block { user { id } } }').join('') + ' }';
+    if (q === 'query AfcOwners { }') return;
+    try {
+      const j = await postJson(req, { operationName: 'AfcOwners', query: q, variables: {} });
+      const d = (j && j.data) || {};
+      if (d.me && d.me.href) myHref = d.me.href.replace(/\/+$/, '');
+      for (const id of uniq) { const b = d['b' + id]; owners.set(id, b && b.user ? b.user.id : null); }
+      if (j && j.errors) warn('owners query errors', j.errors);
+    } catch (e) { warn('owners query failed', e); }
+  }
+
   // Отбирает новые блоки из групп одной сырой страницы. Возвращает {objects, host}.
   function pickBlocks(me, groups, seen, kept) {
     const objects = []; let host = null;
     for (const g of groups) {
       if (isOwn(g, me.id)) continue;
+      if (isMyTarget(g)) continue;           // кто-то добавил что-то в МОЙ канал
       if (!host) host = g;
       for (const o of g.objects || []) {
         if (!o) continue;
+        if (isMine(o, me.id)) continue;      // мой блок или мой канал, сохранённый кем-то
         const k = keyOf(o);
         if (seen.has(k)) continue;
         seen.add(k); kept.add(k); objects.push(o);
@@ -106,6 +142,7 @@
       const raw = groupsOf(cur);
       if (!raw) { end = true; break; }
       if (raw.length === 0) { end = true; break; } // настоящий конец ленты
+      await ensureOwners(req, raw);
       const r = pickBlocks(cur.data.me, raw, seen, kept);
       if (r.host) host = r.host;
       if (!host && !lastHost) lastHost = raw[0];
@@ -166,11 +203,16 @@
   function hide(el) { if (el && !el.hasAttribute(HID)) { el.setAttribute(HID, el.style.display || ''); el.style.display = 'none'; } }
   function unhideAll() { document.querySelectorAll('[' + HID + ']').forEach(el => { el.style.display = el.getAttribute(HID); el.removeAttribute(HID); }); }
   const GRID = 'afc-grid', WRAP = 'afc-group';
+  // всё, что во всплывающих окнах (уведомления, меню, диалоги), не трогаем
+  const POPUP = '[role="dialog"],[role="menu"],[role="listbox"],[role="tooltip"],[aria-modal="true"],[data-radix-popper-content-wrapper],[data-side]';
+  const inPopup = el => !!(el && el.closest && el.closest(POPUP));
+  const feedList = () => document.querySelector('[data-testid="virtuoso-item-list"], [data-test-id="virtuoso-item-list"]');
+  const inFeed = el => { if (inPopup(el)) return false; const l = feedList(); return l ? l.contains(el) : true; };
   function fixHeaders() {
     if (headerHrefs.size) {
       const sel = [...headerHrefs.keys()].map(h => 'a[href="' + CSS.escape(h) + '"]:not([data-afc-done])').join(',');
       document.querySelectorAll(sel).forEach(a => {
-        if (a.closest('.' + GRID)) return; // ссылка внутри карточки
+        if (a.closest('.' + GRID) || !inFeed(a)) return; // ссылка внутри карточки или вне ленты
         const n = headerHrefs.get(a.getAttribute('href')) || 1;
         // поднимаемся до обёртки группы: её последний ребёнок это сетка с карточками
         let el = a;
@@ -191,7 +233,7 @@
     // запасной путь: строки времени ("about 1 hour ago") вне карточек
     document.querySelectorAll('span:not([data-afc-t])').forEach(sp => {
       sp.setAttribute('data-afc-t', '1');
-      if (sp.childElementCount || !CFG.timeRegex.test(sp.textContent || '') || sp.closest('.' + GRID + ', a')) return;
+      if (sp.childElementCount || !CFG.timeRegex.test(sp.textContent || '') || sp.closest('.' + GRID + ', a') || !inFeed(sp)) return;
       hide(sp.parentElement && sp.parentElement.childElementCount === 1 ? sp.parentElement : sp);
     });
     document.documentElement.style.setProperty('--afc-cols', columns());
